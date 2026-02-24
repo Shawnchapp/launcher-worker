@@ -11,6 +11,8 @@ app = Flask(__name__)
 GITHUB_TOKEN = os.getenv("GITHUB_TOKEN")
 REPO_NAME = os.getenv("REPO_NAME")
 
+RAW_BASE = f"https://raw.githubusercontent.com/{REPO_NAME}/main"
+
 
 # ==========================================================
 # LOAD MOD MANIFEST
@@ -19,14 +21,9 @@ REPO_NAME = os.getenv("REPO_NAME")
 def load_mod_manifest(game):
 
     try:
-        url = f"https://api.github.com/repos/{REPO_NAME}/contents/{game}/mod.json"
+        url = f"{RAW_BASE}/{game}/mod.json"
 
-        headers = {
-            "Authorization": f"Bearer {GITHUB_TOKEN}",
-            "Accept": "application/vnd.github.v3.raw"
-        }
-
-        r = requests.get(url, headers=headers)
+        r = requests.get(url)
 
         if r.status_code == 200:
             return r.json()
@@ -44,10 +41,10 @@ def load_mod_manifest(game):
 @app.route("/check_mod", methods=["POST"])
 def check_mod():
 
-    data = request.json
+    data = request.json or {}
 
     game = data.get("game")
-    token = data.get("token")
+    user_tier = data.get("tier", "follower")
 
     mod = load_mod_manifest(game)
 
@@ -56,19 +53,31 @@ def check_mod():
 
     now = int(time.time())
 
-    # Public release = allow immediately
-    if mod.get("release_timestamp", 0) <= now:
+    # Public release check
+    release_time = mod.get("release_timestamp", 0)
+
+    if release_time <= now:
         return jsonify({
             "allowed": True,
-            "version": mod.get("version")
+            "version": mod.get("version"),
+            "auto_install": mod.get("auto_install", False)
         })
 
-    # Locked content (future Patreon/SubStar logic goes here)
+    # Tier locked content (future logic)
+    tier_map = ["follower", "bronze", "silver", "gold"]
 
-    if not token:
-        return jsonify({"allowed": False, "error": "Auth required"}), 403
+    mod_tier = "gold"  # default lock tier (expand later)
 
-    return jsonify({"allowed": True})
+    if user_tier not in tier_map:
+        return jsonify({"allowed": False, "error": "Invalid tier"}), 403
+
+    if tier_map.index(user_tier) < tier_map.index(mod_tier):
+        return jsonify({"allowed": False, "error": "Tier locked"}), 403
+
+    return jsonify({
+        "allowed": True,
+        "version": mod.get("version")
+    })
 
 
 # ==========================================================
@@ -78,16 +87,22 @@ def check_mod():
 @app.route("/download/<path:path>")
 def download(path):
 
-    url = f"https://raw.githubusercontent.com/{REPO_NAME}/main/{path}"
+    url = f"{RAW_BASE}/{path}"
 
     headers = {}
 
     if GITHUB_TOKEN:
-        headers["Authorization"] = f"Bearer {GITHUB_TOKEN}"
+        headers["Authorization"] = f"token {GITHUB_TOKEN}"
 
     r = requests.get(url, headers=headers, stream=True)
 
-    return Response(r.iter_content(chunk_size=8192))
+    if r.status_code != 200:
+        return "File not found", 404
+
+    return Response(
+        r.iter_content(chunk_size=8192),
+        content_type=r.headers.get("content-type")
+    )
 
 
 # ==========================================================
