@@ -52,6 +52,35 @@ def load_mod_manifest(game):
 
     return None
 
+@app.route("/mods_list", methods=["GET"])
+
+def mods_list():
+
+    mods = []
+
+    try:
+        repo_url = f"https://api.github.com/repos/{REPO_NAME}/contents"
+
+        headers = {}
+
+        if GITHUB_TOKEN:
+            headers["Authorization"] = f"token {GITHUB_TOKEN}"
+
+        r = requests.get(repo_url, headers=headers, timeout=10)
+
+        if r.ok:
+            data = r.json()
+
+            for item in data:
+                if item["type"] == "dir":
+                    mods.append(item["name"])
+
+    except:
+        pass
+
+    return jsonify({
+        "mods": mods
+    })
 
 # ==========================================================
 # CHECK MOD ACCESS
