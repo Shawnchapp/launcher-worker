@@ -1,6 +1,8 @@
 import os
 import time
 import requests
+import hashlib
+import json
 from urllib.parse import quote
 from flask import Flask, request, jsonify, Response
 from dotenv import load_dotenv
@@ -53,7 +55,6 @@ def load_mod_manifest(game):
     return None
 
 @app.route("/mods_list", methods=["GET"])
-
 def mods_list():
 
     mods = []
@@ -73,15 +74,31 @@ def mods_list():
 
             for item in data:
                 if item["type"] == "dir":
-                    mods.append(item["name"])
+
+                    game_name = item["name"]
+
+                    # Load mod.json for each mod
+                    mod = load_mod_manifest(game_name)
+
+                    if mod:
+                        mods.append({
+                            "name": game_name,
+                            "version": mod.get("version")
+                        })
 
     except:
         pass
 
-    return jsonify({
-        "mods": mods
-    })
+    # Create stable JSON string for hashing
+    mods_sorted = sorted(mods, key=lambda x: x["name"])
+    json_string = json.dumps(mods_sorted, separators=(",", ":"))
 
+    hash_value = hashlib.md5(json_string.encode()).hexdigest()
+
+    return jsonify({
+        "hash": hash_value,
+        "mods": mods_sorted
+    })
 # ==========================================================
 # CHECK MOD ACCESS
 # ==========================================================
