@@ -56,8 +56,9 @@ def load_mod_manifest(game):
 
 def get_repo_files(game):
     try:
-        safe_game = quote(game)
-        base_url = f"https://api.github.com/repos/{REPO_NAME}/contents/{safe_game}/files"
+        encoded_game = quote(game)
+
+        base_url = f"https://api.github.com/repos/{REPO_NAME}/contents/{encoded_game}/files"
 
         headers = {}
         if GITHUB_TOKEN:
@@ -67,21 +68,30 @@ def get_repo_files(game):
 
         def walk(url):
             r = requests.get(url, headers=headers, timeout=10)
+
             if not r.ok:
+                print("FAILED:", url, r.status_code, r.text)
                 return
 
             for item in r.json():
                 if item["type"] == "file":
-                    rel_path = item["path"].split(f"{safe_game}/files/")[1]
-                    files.append(rel_path)
+                    prefix = f"{game}/files/"
+                    full_path = item["path"]
+
+                    if prefix in full_path:
+                        rel_path = full_path.split(prefix, 1)[1]
+                        files.append(rel_path)
+
                 elif item["type"] == "dir":
                     walk(item["url"])
 
         walk(base_url)
+
+        print("FILES FOUND:", files)  # 🔥 debug
         return files
 
     except Exception as e:
-        print("get_repo_files ERROR:", e)
+        print("ERROR:", e)
         return []
 
 @app.route("/mods_list", methods=["GET"])
