@@ -54,7 +54,37 @@ def load_mod_manifest(game):
 
     return None
 
+def get_repo_files(game):
+    try:
+        safe_game = quote(game)
+        base_url = f"https://api.github.com/repos/{REPO_NAME}/contents/{safe_game}/files"
+
+        headers = {}
+        if GITHUB_TOKEN:
+            headers["Authorization"] = f"token {GITHUB_TOKEN}"
+
+        files = []
+
+        def walk(url):
+            r = requests.get(url, headers=headers, timeout=10)
+            if not r.ok:
+                return
+
+            for item in r.json():
+                if item["type"] == "file":
+                    rel_path = item["path"].split(f"{safe_game}/files/")[1]
+                    files.append(rel_path)
+                elif item["type"] == "dir":
+                    walk(item["url"])
+
+        walk(base_url)
+        return files
+
+    except Exception:
+        return []
+
 @app.route("/mods_list", methods=["GET"])
+
 def mods_list():
 
     mods = []
@@ -128,10 +158,15 @@ def check_mod():
     # ==================================================
 
     if release_time <= now:
+        files = []
+        if mod.get("auto_install"):
+            files = get_repo_files(game)
+        
         return jsonify({
             "allowed": True,
             "version": mod.get("version"),
-            "auto_install": mod.get("auto_install", False)
+            "auto_install": mod.get("auto_install", False),
+            "files": files
         })
 
     # ==================================================
@@ -150,7 +185,8 @@ def check_mod():
 
     return jsonify({
         "allowed": True,
-        "version": mod.get("version")
+        "version": mod.get("version"),
+        "files": get_repo_files(game) if mod.get("auto_install") else []
     })
 
 
