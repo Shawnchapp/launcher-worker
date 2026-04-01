@@ -80,7 +80,8 @@ def get_repo_files(game):
         walk(base_url)
         return files
 
-    except Exception:
+    except Exception as e:
+        print("get_repo_files ERROR:", e)
         return []
 
 @app.route("/mods_list", methods=["GET"])
