@@ -57,7 +57,6 @@ def load_mod_manifest(game):
 def get_repo_files(game):
     try:
         encoded_game = quote(game)
-
         base_url = f"https://api.github.com/repos/{REPO_NAME}/contents/{encoded_game}/files"
 
         headers = {}
@@ -65,6 +64,7 @@ def get_repo_files(game):
             headers["Authorization"] = f"token {GITHUB_TOKEN}"
 
         files = []
+        hashes = []
 
         def walk(url):
             r = requests.get(url, headers=headers, timeout=10)
@@ -80,19 +80,30 @@ def get_repo_files(game):
 
                     if prefix in full_path:
                         rel_path = full_path.split(prefix, 1)[1]
+
                         files.append(rel_path)
+                        hashes.append(item["sha"])
 
                 elif item["type"] == "dir":
                     walk(item["url"])
 
         walk(base_url)
 
-        print("FILES FOUND:", files)  # 🔥 debug
-        return files
+        if not hashes:
+            return [], None
+
+        combined = "".join(sorted(hashes))
+        mod_hash = hashlib.md5(combined.encode()).hexdigest()
+
+        return {
+            "files": files,
+            "hash": mod_hash
+        }
 
     except Exception as e:
-        print("ERROR:", e)
-        return []
+        print("REPO DATA ERROR:", e)
+        return [], None
+
 
 @app.route("/mods_list", methods=["GET"])
 
@@ -120,11 +131,15 @@ def mods_list():
 
                     # Load mod.json for each mod
                     mod = load_mod_manifest(game_name)
+                    
 
                     if mod:
+                        repo_data = get_repo_files(game_name)
                         mods.append({
                             "name": game_name,
-                            "version": mod.get("version")
+                            "version": mod.get("version"),
+                            "hash": repo_data.get("hash"),
+                            "files": repo_data.get("files", [])
                         })
 
     except:
@@ -169,15 +184,17 @@ def check_mod():
     # ==================================================
 
     if release_time <= now:
+        repo_data = get_repo_files(game)
         files = []
         if mod.get("auto_install"):
-            files = get_repo_files(game)
+            files = repo_data.get("files", [])
         
         return jsonify({
             "allowed": True,
             "version": mod.get("version"),
             "auto_install": mod.get("auto_install", False),
-            "files": files
+            "files": files,
+            "hash": repo_data.get("hash")
         })
 
     # ==================================================
@@ -194,10 +211,12 @@ def check_mod():
     if tier_map.index(user_tier) < tier_map.index(mod_tier):
         return jsonify({"allowed": False, "error": "Tier locked"}), 403
 
+    repo_data = get_repo_files(game)
     return jsonify({
         "allowed": True,
         "version": mod.get("version"),
-        "files": get_repo_files(game) if mod.get("auto_install") else []
+        "files": repo_data.get("files", []) if mod.get("auto_install") else [],
+        "hash": repo_data.get("hash")
     })
 
 
