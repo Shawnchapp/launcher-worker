@@ -74,7 +74,7 @@ def get_repo_files(game):
 
             for item in r.json():
                 if item["type"] == "file":
-                    prefix = f"{encoded_game}/files/"
+                    prefix = f"{game}/files/"
                     full_path = item["path"]
 
                     if prefix in full_path:
@@ -219,7 +219,7 @@ def check_mod():
     return jsonify({
         "allowed": True,
         "version": mod.get("version"),
-        "files": repo_data.get("files", {}) if mod.get("auto_install") else {}
+        "files": repo_data.get("files", {}) if mod.get("auto_install") else {},
         "hash": repo_data.get("hash")
     })
 
