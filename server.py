@@ -63,8 +63,7 @@ def get_repo_files(game):
         if GITHUB_TOKEN:
             headers["Authorization"] = f"token {GITHUB_TOKEN}"
 
-        files = []
-        hashes = []
+        files = {}
 
         def walk(url):
             r = requests.get(url, headers=headers, timeout=10)
@@ -75,24 +74,26 @@ def get_repo_files(game):
 
             for item in r.json():
                 if item["type"] == "file":
-                    prefix = f"{game}/files/"
+                    prefix = f"{encoded_game}/files/"
                     full_path = item["path"]
 
                     if prefix in full_path:
                         rel_path = full_path.split(prefix, 1)[1]
 
-                        files.append(rel_path)
-                        hashes.append(item["sha"])
+                        files[rel_path] = item["sha"]
 
                 elif item["type"] == "dir":
                     walk(item["url"])
 
         walk(base_url)
 
-        if not hashes:
-            return [], None
+        if not files:
+            return {
+                "files": {},
+                "hash": None
+            }
 
-        combined = "".join(sorted(hashes))
+        combined = "".join(sorted(files.values()))
         mod_hash = hashlib.md5(combined.encode()).hexdigest()
 
         return {
@@ -102,7 +103,10 @@ def get_repo_files(game):
 
     except Exception as e:
         print("REPO DATA ERROR:", e)
-        return [], None
+        return {
+            "files": {},
+            "hash": None
+        }
 
 
 @app.route("/mods_list", methods=["GET"])
@@ -139,7 +143,7 @@ def mods_list():
                             "name": game_name,
                             "version": mod.get("version"),
                             "hash": repo_data.get("hash"),
-                            "files": repo_data.get("files", [])
+                            "files": repo_data.get("files", {})
                         })
 
     except:
@@ -185,9 +189,9 @@ def check_mod():
 
     if release_time <= now:
         repo_data = get_repo_files(game)
-        files = []
+        files = {}
         if mod.get("auto_install"):
-            files = repo_data.get("files", [])
+            files = repo_data.get("files", {})
         
         return jsonify({
             "allowed": True,
@@ -215,7 +219,7 @@ def check_mod():
     return jsonify({
         "allowed": True,
         "version": mod.get("version"),
-        "files": repo_data.get("files", []) if mod.get("auto_install") else [],
+        "files": repo_data.get("files", {}) if mod.get("auto_install") else {}
         "hash": repo_data.get("hash")
     })
 
